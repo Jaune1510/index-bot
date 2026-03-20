@@ -1,0 +1,248 @@
+
+<div style="padding: 1rem 0; display: flex; flex-direction: column; align-items: center; gap: 1rem; font-family: var(--font-sans);">
+
+  <div id="status-badge" style="font-size: 13px; padding: 5px 14px; border-radius: 999px; background: var(--color-background-secondary); color: var(--color-text-secondary); border: 0.5px solid var(--color-border-tertiary);">
+    Micrófono no activo
+  </div>
+
+  <div style="position: relative; width: 280px; height: 320px;">
+    <canvas id="foxCanvas" width="280" height="320" style="border-radius: var(--border-radius-lg); width: 280px; height: 320px;"></canvas>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 10px; width: 260px;">
+    <span style="font-size: 12px; color: var(--color-text-secondary); white-space: nowrap;">Sensibilidad</span>
+    <input type="range" id="sensitivity" min="5" max="60" value="18" style="flex: 1;" />
+    <span id="sens-val" style="font-size: 12px; color: var(--color-text-secondary); min-width: 28px;">18</span>
+  </div>
+
+  <div id="vol-bar-wrap" style="width: 260px; height: 6px; background: var(--color-background-secondary); border-radius: 99px; overflow: hidden; border: 0.5px solid var(--color-border-tertiary);">
+    <div id="vol-bar" style="height: 100%; width: 0%; background: #D4537E; border-radius: 99px; transition: width 0.05s;"></div>
+  </div>
+
+  <button id="mic-btn" style="padding: 8px 22px; font-size: 14px; cursor: pointer; border-radius: var(--border-radius-md);">
+    Activar micrófono
+  </button>
+
+  <p style="font-size: 12px; color: var(--color-text-secondary); margin: 0; text-align: center; max-width: 260px;">
+    Demo con sprites generados. Reemplaza las funciones <code>drawSilent()</code> y <code>drawTalking()</code> con tus imágenes PNG.
+  </p>
+</div>
+
+<script>
+const canvas = document.getElementById('foxCanvas');
+const ctx = canvas.getContext('2d');
+const micBtn = document.getElementById('mic-btn');
+const badge = document.getElementById('status-badge');
+const volBar = document.getElementById('vol-bar');
+const sensSlider = document.getElementById('sensitivity');
+const sensVal = document.getElementById('sens-val');
+
+let isTalking = false;
+let volume = 0;
+let animFrame = 0;
+let blinkTimer = 0;
+let blinkOpen = true;
+let mouthPhase = 0;
+
+const isDark = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+function getBg() { return isDark() ? '#1a1a2e' : '#fdf0f5'; }
+function getFur() { return '#e8855a'; }
+function getDark() { return '#c4623a'; }
+function getLight() { return '#f5c4a0'; }
+function getWhite() { return isDark() ? '#f0e8e8' : '#fff8f8'; }
+
+function drawEar(x, y, angle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-18, -40);
+  ctx.lineTo(18, -40);
+  ctx.closePath();
+  ctx.fillStyle = getFur();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, -5);
+  ctx.lineTo(-10, -32);
+  ctx.lineTo(10, -32);
+  ctx.closePath();
+  ctx.fillStyle = '#f09090';
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFox(talking) {
+  const W = 280, H = 320;
+  ctx.clearRect(0, 0, W, H);
+
+  const bg = getBg();
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = 140, cy = 160;
+
+  drawEar(cx - 45, cy - 68, -0.15);
+  drawEar(cx + 45, cy - 68, 0.15);
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, 72, 78, 0, 0, Math.PI * 2);
+  ctx.fillStyle = getFur();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 28, 38, 34, 0, 0, Math.PI * 2);
+  ctx.fillStyle = getLight();
+  ctx.fill();
+
+  const eyeY = cy - 14;
+  const eyeOffX = 26;
+
+  if (blinkOpen) {
+    [cx - eyeOffX, cx + eyeOffX].forEach(ex => {
+      ctx.beginPath();
+      ctx.ellipse(ex, eyeY, 11, 13, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#2a1a2e';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(ex - 3, eyeY - 3, 4, 4, 0, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.75)';
+      ctx.fill();
+      if (talking) {
+        ctx.beginPath();
+        ctx.ellipse(ex, eyeY, 13, 10, 0, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(212,83,126,0.4)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+    });
+  } else {
+    [cx - eyeOffX, cx + eyeOffX].forEach(ex => {
+      ctx.beginPath();
+      ctx.moveTo(ex - 11, eyeY);
+      ctx.quadraticCurveTo(ex, eyeY + 6, ex + 11, eyeY);
+      ctx.strokeStyle = '#2a1a2e';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    });
+  }
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 6, 8, 7, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#c4623a';
+  ctx.fill();
+
+  const mouthY = cy + 24;
+  if (!talking) {
+    ctx.beginPath();
+    ctx.moveTo(cx - 14, mouthY);
+    ctx.quadraticCurveTo(cx, mouthY + 8, cx + 14, mouthY);
+    ctx.strokeStyle = '#2a1a2e';
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  } else {
+    const open = 8 + Math.sin(mouthPhase) * 5;
+    ctx.beginPath();
+    ctx.ellipse(cx, mouthY + open / 2, 16, open, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#3a1520';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx, mouthY + open / 2, 14, open * 0.5, 0, 0, Math.PI);
+    ctx.fillStyle = '#e07090';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx, mouthY + open / 2, 10, open * 0.25, 0, Math.PI, Math.PI * 2);
+    ctx.fillStyle = '#f0c0c0';
+    ctx.fill();
+  }
+
+  if (talking) {
+    ctx.beginPath();
+    ctx.arc(cx - 30, cy + 18, 10, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(212,83,126,0.25)';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(cx + 30, cy + 18, 10, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  const tailBaseX = cx + 65, tailBaseY = cy + 60;
+  ctx.beginPath();
+  ctx.moveTo(tailBaseX, tailBaseY);
+  ctx.bezierCurveTo(tailBaseX + 40, tailBaseY - 20, tailBaseX + 60, tailBaseY - 60, tailBaseX + 20, tailBaseY - 80);
+  ctx.bezierCurveTo(tailBaseX - 10, tailBaseY - 100, tailBaseX - 30, tailBaseY - 70, tailBaseX + 10, tailBaseY - 50);
+  ctx.bezierCurveTo(tailBaseX + 30, tailBaseY - 30, tailBaseX + 10, tailBaseY + 10, tailBaseX, tailBaseY);
+  ctx.fillStyle = getFur();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(tailBaseX + 20, tailBaseY - 80, 16, 12, -0.3, 0, Math.PI * 2);
+  ctx.fillStyle = getWhite();
+  ctx.fill();
+}
+
+function loop() {
+  animFrame++;
+  mouthPhase += isTalking ? 0.25 : 0;
+
+  blinkTimer++;
+  const blinkInterval = isTalking ? 110 : 160;
+  if (blinkTimer > blinkInterval) {
+    blinkOpen = false;
+    if (blinkTimer > blinkInterval + 5) { blinkOpen = true; blinkTimer = 0; }
+  }
+
+  drawFox(isTalking);
+  requestAnimationFrame(loop);
+}
+loop();
+
+sensSlider.addEventListener('input', () => { sensVal.textContent = sensSlider.value; });
+
+let analyser, dataArray, micActive = false;
+
+micBtn.addEventListener('click', async () => {
+  if (micActive) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const audioCtx = new AudioContext();
+    const src = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    src.connect(analyser);
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    micActive = true;
+    micBtn.textContent = 'Micrófono activo';
+    micBtn.disabled = true;
+    badge.textContent = 'Escuchando...';
+    badge.style.background = 'var(--color-background-success)';
+    badge.style.color = 'var(--color-text-success)';
+    badge.style.borderColor = 'var(--color-border-success)';
+
+    function tick() {
+      analyser.getByteFrequencyData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+      const avg = sum / dataArray.length;
+      volume = avg;
+      const threshold = parseInt(sensSlider.value);
+      const pct = Math.min(100, (avg / 80) * 100);
+      volBar.style.width = pct + '%';
+
+      const wasT = isTalking;
+      isTalking = avg > threshold;
+      if (isTalking !== wasT) {
+        badge.textContent = isTalking ? 'Hablando!' : 'Silencio...';
+      }
+      requestAnimationFrame(tick);
+    }
+    tick();
+  } catch(e) {
+    badge.textContent = 'Error: permiso denegado';
+    badge.style.background = 'var(--color-background-danger)';
+    badge.style.color = 'var(--color-text-danger)';
+  }
+});
+</script>
